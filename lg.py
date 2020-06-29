@@ -1,9 +1,8 @@
-from __future__ import unicode_literals
-
 import re
 import time
 import socket
-import httplib
+import http.client
+import urllib.parse
 
 from xml.etree import ElementTree
 
@@ -49,21 +48,26 @@ class Remote():
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(1)
 
-        addresses = []
+        devices = []
         while attempts > 0:
-            sock.sendto(request, ('239.255.255.250', 1900))
+            sock.sendto(request.encode(), ('239.255.255.250', 1900))
             try:
                 response, address = sock.recvfrom(512)
             except:
                 attempts -= 1
                 continue
 
-            if re.search('LG', response):
+
+            name = None
+            if re.search('LG', response.decode()):
+                for i in response.decode().splitlines():
+                    if 'LG' in i and 'DLNADeviceName' in i:
+                        name = (urllib.parse.unquote(i).split(':')[1].strip())
                 if first_only:
                     sock.close()
-                    return address[0]
+                    return address[0],name
                 else:
-                    addresses.append(address[0])
+                    devices.append(address[0], name)
 
             attempts -= 1
 
@@ -71,10 +75,10 @@ class Remote():
         if first_only:
             raise Remote.NoTVFound
         else:
-            if len(addresses) == 0:
+            if len(devices) == 0:
                 raise Remote.NoTVFound
             else:
-                return addresses
+                return devices
 
     def set_pairing_key(self, pair_key):
         """
@@ -89,11 +93,11 @@ class Remote():
         POST the XML request to the configured TV and parse the response
         """
 
-        http = httplib.HTTPConnection(self.ip_address, port=8080)
+        httpc = http.client.HTTPConnection(self.ip_address, port=8080)
         headers = {'Content-Type': 'application/atom+xml'}
         headers.update(extra_headers)
-        http.request("POST", endpoint, content, headers=headers)
-        response = http.getresponse()
+        httpc.request("POST", endpoint, content, headers=headers)
+        response = httpc.getresponse()
         tree = ElementTree.XML(response.read())
         return tree
 
